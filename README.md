@@ -8,6 +8,22 @@ This project is not affiliated with, endorsed by, or maintained by Hugging Face.
 
 ## Install
 
+From this repository:
+
+```bash
+git clone https://github.com/electricwolfemarshmallowhypertext/smolagents-webui.git
+cd smolagents-webui
+pip install -e .
+```
+
+From a built wheel:
+
+```bash
+pip install dist/smolagents_webui-0.1.0-py3-none-any.whl
+```
+
+From PyPI once package publishing exists:
+
 ```bash
 pip install smolagents-webui
 ```

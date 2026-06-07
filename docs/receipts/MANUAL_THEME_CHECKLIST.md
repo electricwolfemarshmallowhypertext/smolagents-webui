@@ -9,7 +9,15 @@ Use this checklist to produce missing UI screenshot receipts:
 ## Setup
 
 1. Start app:
-   - `PYTHONPATH=src python -m smolagents_webui.server --host 127.0.0.1 --port 7865 --workspace-root .`
+   ```powershell
+   mkdir .smol-ui-workspace
+   mkdir .smol-ui-data
+
+   python -m smolagents_webui.server `
+     --workspace-root .smol-ui-workspace `
+     --data-dir .smol-ui-data `
+     --port 7865
+   ```
 2. Open:
    - `http://127.0.0.1:7865`
 
