@@ -6,6 +6,17 @@ from pathlib import Path
 from typing import Any
 
 
+REDACTED_VALUE = "[redacted]"
+SECRET_KEY_FRAGMENTS = (
+    "api_key",
+    "token",
+    "secret",
+    "password",
+    "authorization",
+    "bearer",
+)
+
+
 def to_json_compatible(value: Any, *, max_depth: int = 6) -> Any:
     """Convert arbitrary Python values into JSON-safe structures."""
 
@@ -37,3 +48,35 @@ def to_json_compatible(value: Any, *, max_depth: int = 6) -> Any:
             return str(value)
 
     return str(value)
+
+
+def is_secret_key(key: Any) -> bool:
+    normalized = str(key).lower()
+    return any(fragment in normalized for fragment in SECRET_KEY_FRAGMENTS)
+
+
+def redact_secrets(value: Any, *, max_depth: int = 6) -> Any:
+    """Convert values to JSON-safe structures while redacting secret-bearing keys."""
+
+    json_value = to_json_compatible(value, max_depth=max_depth)
+    return _redact_json_compatible(json_value, max_depth=max_depth)
+
+
+def _redact_json_compatible(value: Any, *, max_depth: int) -> Any:
+    if max_depth < 0:
+        return "<max-depth-reached>"
+
+    if isinstance(value, dict):
+        redacted: dict[str, Any] = {}
+        for key, item in value.items():
+            text_key = str(key)
+            if is_secret_key(text_key):
+                redacted[text_key] = REDACTED_VALUE
+            else:
+                redacted[text_key] = _redact_json_compatible(item, max_depth=max_depth - 1)
+        return redacted
+
+    if isinstance(value, list):
+        return [_redact_json_compatible(item, max_depth=max_depth - 1) for item in value]
+
+    return value

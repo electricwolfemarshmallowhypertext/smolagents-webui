@@ -28,12 +28,6 @@ From PyPI once package publishing exists:
 pip install smolagents-webui
 ```
 
-For local development from this checkout:
-
-```bash
-pip install -e .
-```
-
 `smolagents` is installed as a dependency. This repository does not bundle or redistribute the upstream `smolagents` Python package.
 
 ## Run
@@ -45,6 +39,17 @@ mkdir -p ~/smol-ui-workspace ~/smol-ui-data
 smolagents-webui \
   --workspace-root ~/smol-ui-workspace \
   --data-dir ~/smol-ui-data \
+  --port 7865
+```
+
+PowerShell:
+
+```powershell
+mkdir .smol-ui-workspace
+mkdir .smol-ui-data
+smolagents-webui `
+  --workspace-root .smol-ui-workspace `
+  --data-dir .smol-ui-data `
   --port 7865
 ```
 
@@ -98,6 +103,10 @@ Ollama is tested, not required. Use any configured backend supported by the UI a
 `smolagents` code agents can execute Python code and affect files in the configured workspace. Run this UI only against workspaces you are comfortable letting an agent read or modify.
 
 This WebUI does not add an auth layer, sandbox, cloud sync, telemetry, or remote access control.
+
+Local session history may store prompts, model outputs, generated code, tool observations, agent state, and errors. Do not use shared data directories for sensitive work. API keys are redacted before persistence.
+
+Default localhost use is recommended. Do not bind to `0.0.0.0` or expose the server publicly unless it is behind trusted access controls.
 
 ## Verification
 

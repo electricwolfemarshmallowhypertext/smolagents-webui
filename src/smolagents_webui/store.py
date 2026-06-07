@@ -12,7 +12,7 @@ from pathlib import Path
 from threading import Condition, RLock, Timer
 from typing import Any
 
-from smolagents_webui.serialization import to_json_compatible
+from smolagents_webui.serialization import redact_secrets, to_json_compatible
 
 
 def utc_now_iso() -> str:
@@ -87,9 +87,9 @@ class SessionStore:
                     updated_at=str(payload.get("updated_at", utc_now_iso())),
                     run_count=int(payload.get("run_count", 0)),
                     is_running=bool(payload.get("is_running", False)),
-                    events=list(payload.get("events", [])),
+                    events=redact_secrets(list(payload.get("events", []))),
                     next_seq=1,
-                    agent_state=dict(payload.get("agent_state", {})),
+                    agent_state=redact_secrets(dict(payload.get("agent_state", {}))),
                     last_error=payload.get("last_error"),
                     last_prompt=payload.get("last_prompt"),
                 )
@@ -121,9 +121,9 @@ class SessionStore:
                     "updated_at": record.updated_at,
                     "run_count": record.run_count,
                     "is_running": record.is_running,
-                    "events": record.events,
+                    "events": redact_secrets(record.events),
                     "next_seq": record.next_seq,
-                    "agent_state": record.agent_state,
+                    "agent_state": redact_secrets(record.agent_state),
                     "last_error": record.last_error,
                     "last_prompt": record.last_prompt,
                 }
@@ -289,7 +289,7 @@ class SessionStore:
                 "seq": record.next_seq,
                 "type": event_type,
                 "timestamp": utc_now_iso(),
-                "payload": to_json_compatible(payload or {}),
+                "payload": redact_secrets(payload or {}),
             }
             record.events.append(event)
             if len(record.events) > self._max_events_per_session:
@@ -324,7 +324,7 @@ class SessionStore:
     def update_agent_state(self, session_id: str, state: dict[str, Any]) -> None:
         with self._events_available:
             record = self._get_session_locked(session_id)
-            record.agent_state = to_json_compatible(state) if isinstance(state, dict) else {}
+            record.agent_state = redact_secrets(state) if isinstance(state, dict) else {}
             record.updated_at = utc_now_iso()
             self._schedule_persist_locked()
             self._events_available.notify_all()

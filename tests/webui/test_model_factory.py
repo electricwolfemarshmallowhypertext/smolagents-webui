@@ -61,6 +61,26 @@ def test_model_factory_routes_to_litellm(monkeypatch):
     assert captured["api_base"] == "b"
 
 
+def test_model_factory_still_receives_api_key_for_model_creation(monkeypatch):
+    captured = {}
+
+    def fake_openai(**kwargs):
+        captured.update(kwargs)
+        return ("openai", kwargs)
+
+    monkeypatch.setattr(
+        model_factory_module,
+        "_import_models",
+        lambda: (lambda **kwargs: ("inference", kwargs), lambda **kwargs: ("litellm", kwargs), fake_openai),
+    )
+    factory = ModelFactory()
+
+    model = factory.create(AgentRunConfig(provider="openai", model_id="gpt-4o-mini", api_key="live-api-key-value"))
+
+    assert model[0] == "openai"
+    assert captured["api_key"] == "live-api-key-value"
+
+
 def test_model_factory_routes_ollama_to_openai_compat(monkeypatch):
     captured = {}
 

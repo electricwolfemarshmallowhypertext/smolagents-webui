@@ -153,6 +153,8 @@ tool_output/
 
 # smol.ui runtime persistence
 .smolagents-webui/
+.smol-ui-workspace/
+.smol-ui-data/
 .manual-smoke-data/
 .manual-smoke.pid
 .runtime-smoke-data/
