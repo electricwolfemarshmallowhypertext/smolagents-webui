@@ -4,6 +4,8 @@ Unofficial standalone WebUI for [Hugging Face smolagents](https://github.com/hug
 
 `smolagents-webui` is a Python + vanilla JavaScript interface for running `smolagents` `CodeAgent` sessions from a browser. It provides session history, a streaming run timeline, tool/code/output cards, and a workspace/state panel.
 
+Use your existing smolagents-compatible model/provider setup from the browser.
+
 ![smolagents-webui preview](docs/receipts/readme-preview.png)
 
 This project is not affiliated with, endorsed by, or maintained by Hugging Face.
@@ -92,6 +94,51 @@ api_base: http://127.0.0.1:11434/v1
 ```
 
 Ollama is tested, not required. Use any configured backend supported by the UI and your local credentials/environment.
+
+## Using your own smolagents tools
+
+Existing smolagents users can bring their own tools or agent setup into the WebUI at server start.
+
+Tools factory:
+
+```bash
+smolagents-webui \
+  --workspace-root ./workspace \
+  --data-dir ./data \
+  --tools-factory my_tools:get_tools
+```
+
+```python
+# my_tools.py
+def get_tools():
+    return [my_tool_1, my_tool_2]
+```
+
+Agent factory:
+
+```bash
+smolagents-webui \
+  --workspace-root ./workspace \
+  --data-dir ./data \
+  --agent-factory my_agent:create_agent
+```
+
+```python
+# my_agent.py
+from smolagents import CodeAgent
+
+
+def create_agent(model):
+    return CodeAgent(
+        tools=[my_tool_1, my_tool_2],
+        model=model,
+        max_steps=10,
+    )
+```
+
+The WebUI still creates the selected smolagents model adapter, then passes it to your factory so your configured tools can run through the browser. Tools factories are called with no arguments and must return a list. Agent factories may accept `model`, optionally `config`, and must return an agent with `.run()`.
+
+Factories import and execute local Python code. Use only trusted local modules.
 
 ## Features
 

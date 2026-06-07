@@ -14,7 +14,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 from smolagents_webui.config import AgentRunConfig
-from smolagents_webui.runner import AgentRunner
+from smolagents_webui.runner import AgentRunner, FactoryLoadError
 from smolagents_webui.store import AlreadyRunningError, SessionStore
 from smolagents_webui.workspace import WorkspaceBrowser
 
@@ -388,6 +388,16 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Directory used to persist sessions (defaults to the user app data directory).",
     )
+    parser.add_argument(
+        "--agent-factory",
+        default=None,
+        help="User Python factory in module:function form. Called with model/config when supported and must return a smolagents agent.",
+    )
+    parser.add_argument(
+        "--tools-factory",
+        default=None,
+        help="User Python factory in module:function form. Called with no arguments and must return a list of smolagents tools.",
+    )
     return parser.parse_args()
 
 
@@ -406,7 +416,15 @@ def main() -> None:
     data_dir = Path(args.data_dir).resolve() if args.data_dir else default_data_dir()
 
     store = SessionStore(file_path=data_dir / "sessions.json")
-    runner = AgentRunner(store=store)
+    try:
+        runner = AgentRunner(
+            store=store,
+            agent_factory_path=args.agent_factory,
+            tools_factory_path=args.tools_factory,
+        )
+    except FactoryLoadError as exc:
+        print(f"Factory error: {exc}", file=sys.stderr)
+        raise SystemExit(2) from None
     workspace = WorkspaceBrowser(workspace_root=workspace_root)
     static_root = Path(__file__).resolve().parent / "static"
 
