@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>smol.ui</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body data-theme="dark" data-mobile-panel="run">
+    <header class="brand-bar">
+      <div class="brand-lockup">
+        <img src="/static/smol-ui-logo.svg" alt="smol.ui logo" class="brand-logo" />
+        <div>
+          <div class="wordmark" aria-label="smol.ui">
+            <span class="wordmark-smol">smol</span><span class="wordmark-dot">.</span><span class="wordmark-ui">ui</span>
+          </div>
+          <p class="brand-tagline">barebones by design</p>
+        </div>
+      </div>
+      <div class="brand-actions">
+        <label class="theme-switcher">
+          <span>Theme</span>
+          <select id="theme-select" aria-label="Theme selector">
+            <option value="dark">dark</option>
+            <option value="light">light</option>
+            <option value="modern-tech">modern-tech</option>
+          </select>
+        </label>
+      </div>
+    </header>
+
+    <nav class="mobile-nav" aria-label="Mobile panel navigation">
+      <button id="mobile-tab-sessions" class="mobile-tab" type="button" data-target="sessions">Sessions</button>
+      <button id="mobile-tab-run" class="mobile-tab active" type="button" data-target="run">Run</button>
+      <button id="mobile-tab-workspace" class="mobile-tab" type="button" data-target="workspace">Workspace</button>
+    </nav>
+
+    <div class="app-shell">
+      <aside class="panel left-panel" data-panel="sessions">
+        <div class="panel-header">
+          <h1>Session History</h1>
+          <button id="new-session-btn" type="button">New</button>
+        </div>
+        <div id="session-list" class="session-list"></div>
+      </aside>
+
+      <main class="panel center-panel" data-panel="run">
+        <header class="panel-header center-header">
+          <div class="center-header-title">
+            <h1>Agent Run Console</h1>
+            <p id="session-title" class="muted">No session selected</p>
+          </div>
+          <span class="live-pill" id="live-pill">idle</span>
+        </header>
+
+        <section id="chat-feed" class="chat-feed"></section>
+
+        <form id="run-form" class="run-form">
+          <textarea
+            id="prompt-input"
+            name="prompt"
+            rows="3"
+            required
+          ></textarea>
+
+          <div class="config-grid">
+            <label>
+              Provider
+              <select id="provider-select" name="provider">
+                <option value="hf_inference">HF Inference</option>
+                <option value="litellm">LiteLLM</option>
+                <option value="openai">OpenAI</option>
+                <option value="ollama">Ollama</option>
+              </select>
+            </label>
+
+            <label>
+              Model ID
+              <input id="model-id-input" name="model_id" value="Qwen/Qwen3-Next-80B-A3B-Thinking" />
+            </label>
+
+            <label>
+              API Base
+              <input id="api-base-input" name="api_base" />
+            </label>
+
+            <label>
+              API Key
+              <input id="api-key-input" name="api_key" type="password" />
+            </label>
+
+            <label>
+              HF Provider
+              <input id="hf-provider-input" name="hf_provider" />
+            </label>
+
+            <label>
+              Max Steps
+              <input id="max-steps-input" name="max_steps" type="number" min="1" max="100" value="12" />
+            </label>
+
+            <label>
+              Planning Interval
+              <input id="planning-interval-input" name="planning_interval" type="number" min="1" max="50" />
+            </label>
+
+            <label>
+              Imports (CSV)
+              <input id="imports-input" name="additional_imports" />
+            </label>
+          </div>
+
+          <button id="run-btn" type="submit">Run Agent</button>
+        </form>
+      </main>
+
+      <aside class="panel right-panel" data-panel="workspace">
+        <section class="side-section">
+          <div class="panel-header">
+            <h2>Workspace</h2>
+            <button id="refresh-tree-btn" type="button">Refresh</button>
+          </div>
+          <div class="workspace-content">
+            <div id="workspace-tree" class="workspace-tree"></div>
+            <section class="recent-files-section">
+              <h2>Recent Files</h2>
+              <ul id="recent-files" class="recent-files"></ul>
+            </section>
+          </div>
+        </section>
+
+        <section class="side-section">
+          <div class="panel-header">
+            <h2>Agent State</h2>
+            <button id="refresh-state-btn" type="button">Refresh</button>
+          </div>
+          <div id="agent-state" class="state-viewer"></div>
+        </section>
+      </aside>
+    </div>
+
+    <template id="chat-card-template">
+      <article class="chat-card">
+        <header class="chat-card-header">
+          <div class="chat-card-title"></div>
+          <div class="chat-card-badges"></div>
+        </header>
+        <div class="chat-card-meta"></div>
+        <div class="chat-card-body"></div>
+      </article>
+    </template>
+
+    <script src="/static/app.js" type="module"></script>
+  </body>
+</html>

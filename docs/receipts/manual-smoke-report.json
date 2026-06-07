@@ -1,0 +1,89 @@
+{
+  "all_passed": true,
+  "results": [
+    {
+      "step": 1,
+      "name": "Default theme is dark on first load",
+      "ok": true,
+      "detail": "data-theme=dark"
+    },
+    {
+      "step": 2,
+      "name": "Theme switch dark->light->modern-tech->dark works",
+      "ok": true,
+      "detail": "light->light; modern-tech->modern-tech; dark->dark"
+    },
+    {
+      "step": 3,
+      "name": "Create/select session works",
+      "ok": true,
+      "detail": "before=9, after=10, active=1"
+    },
+    {
+      "step": 4,
+      "name": "Submit a run works",
+      "ok": true,
+      "detail": "run_statuses=[202]"
+    },
+    {
+      "step": 5,
+      "name": "Run button changes to Running...",
+      "ok": true,
+      "detail": "button_text=Running..."
+    },
+    {
+      "step": 6,
+      "name": "Duplicate submit is blocked",
+      "ok": true,
+      "detail": "statuses=[202], extra_requests=0"
+    },
+    {
+      "step": 7,
+      "name": "Streaming cards render",
+      "ok": true,
+      "detail": "stream_event_badges=['action'], sample_titles=['Prompt', 'Action Step', 'Run Failed']"
+    },
+    {
+      "step": 8,
+      "name": "Sessions sidebar updates cleanly during/after run",
+      "ok": true,
+      "detail": "active_meta='runs 0 - idle - 6/1/2026, 7:00:44 PM'"
+    },
+    {
+      "step": 9,
+      "name": "Load older events appears and works",
+      "ok": true,
+      "detail": "button_visible=True, cards_before=7, cards_after=9, seed_selected=True, seed_session_id=ddcab6973750475cafdf49d5d68a792f"
+    },
+    {
+      "step": 10,
+      "name": "Workspace tree and recent files load",
+      "ok": true,
+      "detail": "tree_items=77, recent_items=20"
+    },
+    {
+      "step": 11,
+      "name": "Mobile width layout engages",
+      "ok": true,
+      "detail": "mobile_nav_visible=True"
+    },
+    {
+      "step": 12,
+      "name": "Mobile Sessions/Run/Workspace tabs work",
+      "ok": true,
+      "detail": "sessions=True, run=True, workspace=True"
+    },
+    {
+      "step": 13,
+      "name": "Verbose reasoning cards collapsed on small screens",
+      "ok": true,
+      "detail": "reasoning_count=2, display=none"
+    },
+    {
+      "step": 14,
+      "name": "Theme persists across reload",
+      "ok": true,
+      "detail": "before=modern-tech, after=modern-tech, body=modern-tech"
+    }
+  ]
+}

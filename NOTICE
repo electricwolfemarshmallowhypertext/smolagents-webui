@@ -1,0 +1,17 @@
+smolagents-webui
+Copyright (c) 2026 smol.ui contributors
+
+smolagents-webui is an unofficial WebUI for Hugging Face smolagents.
+It is not affiliated with, endorsed by, or maintained by Hugging Face.
+
+This project depends on smolagents, which is developed by Hugging Face and
+licensed under the Apache License, Version 2.0.
+
+smolagents project:
+https://github.com/huggingface/smolagents
+
+smolagents license:
+https://github.com/huggingface/smolagents/blob/main/LICENSE
+
+The smolagents package is used as an external dependency. Its source code is
+not bundled into this package.

@@ -1,0 +1,13 @@
+include LICENSE
+include README.md
+include pyproject.toml
+recursive-include src/smolagents_webui/static *
+recursive-include src/smolagents_webui *.py
+recursive-include docs/receipts *
+include docs/AUDIT_RECEIPTS.md
+global-exclude __pycache__/*
+global-exclude *.py[cod]
+prune src/smolagents
+prune tests
+prune examples
+prune docs/source

@@ -1,0 +1,9 @@
+<svg width="80" height="80" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">smol.ui logo</title>
+  <desc id="desc">Monoline terminal-inspired logo for smol.ui.</desc>
+  <rect x="0.5" y="0.5" width="79" height="79" fill="none" stroke="#1E2A3A" />
+  <rect x="10.5" y="10.5" width="59" height="59" fill="none" stroke="#00EAFF" />
+  <path d="M20 30 L34 40 L20 50" fill="none" stroke="#FF00A8" stroke-width="1.5" stroke-linecap="square" />
+  <line x1="40" y1="50" x2="58" y2="50" stroke="#8CFF00" stroke-width="1.5" stroke-linecap="square" />
+  <line x1="40" y1="30" x2="58" y2="30" stroke="#00EAFF" stroke-width="1.5" stroke-linecap="square" />
+</svg>
