@@ -4,29 +4,24 @@ Unofficial standalone WebUI for [Hugging Face smolagents](https://github.com/hug
 
 `smolagents-webui` is a Python + vanilla JavaScript interface for running `smolagents` `CodeAgent` sessions from a browser. It provides session history, a streaming run timeline, tool/code/output cards, and a workspace/state panel.
 
+![smolagents-webui preview](docs/receipts/readme-preview.png)
+
 This project is not affiliated with, endorsed by, or maintained by Hugging Face.
 
 ## Install
 
-From this repository:
+From GitHub:
 
 ```bash
 git clone https://github.com/electricwolfemarshmallowhypertext/smolagents-webui.git
 cd smolagents-webui
-pip install -r constraints-dev.txt
 pip install -e .
 ```
 
-From a built wheel:
+From a release wheel:
 
 ```bash
-pip install dist/smolagents_webui-0.1.0-py3-none-any.whl
-```
-
-From PyPI once package publishing exists:
-
-```bash
-pip install smolagents-webui
+pip install smolagents_webui-0.1.0-py3-none-any.whl
 ```
 
 `smolagents` is installed as a dependency. This repository does not bundle or redistribute the upstream `smolagents` Python package.
@@ -60,7 +55,15 @@ Open:
 http://127.0.0.1:7865
 ```
 
-Development run without installing:
+## Development
+
+```bash
+pip install -r constraints-dev.txt
+pip install -e .
+pytest tests/webui
+```
+
+Run without installing:
 
 ```bash
 PYTHONPATH=src python -m smolagents_webui.server \
