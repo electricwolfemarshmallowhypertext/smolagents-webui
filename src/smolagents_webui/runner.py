@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import importlib
+import inspect
+import sys
 import threading
+from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
 from smolagents_webui.config import AgentRunConfig
@@ -16,12 +20,27 @@ class RunCancelled(Exception):
     """Internal signal for cooperative run cancellation."""
 
 
+class FactoryLoadError(ValueError):
+    """Raised when a user-provided factory cannot be loaded or used."""
+
+
 class AgentRunner:
     """Run smolagents tasks in background threads and publish UI events."""
 
-    def __init__(self, store: SessionStore, model_factory: ModelFactory | None = None):
+    def __init__(
+        self,
+        store: SessionStore,
+        model_factory: ModelFactory | None = None,
+        *,
+        agent_factory_path: str | None = None,
+        tools_factory_path: str | None = None,
+    ):
         self.store = store
         self.model_factory = model_factory or ModelFactory()
+        self.agent_factory_path = agent_factory_path
+        self.tools_factory_path = tools_factory_path
+        self._agent_factory = self._load_factory(agent_factory_path, "--agent-factory") if agent_factory_path else None
+        self._tools_factory = self._load_factory(tools_factory_path, "--tools-factory") if tools_factory_path else None
 
     def start_run(self, session_id: str, prompt: str, config: AgentRunConfig) -> None:
         run_id = self.store.try_start_run(session_id, prompt, to_json_compatible(config))
@@ -62,19 +81,25 @@ class AgentRunner:
 
             self._raise_if_cancelled(session_id, run_id)
             model = self.model_factory.create(config)
-            agent = CodeAgent(
-                tools=[],
-                model=model,
-                additional_authorized_imports=config.additional_imports,
-                planning_interval=config.planning_interval,
-                step_callbacks={
-                    ActionStep: step_callback,
-                    PlanningStep: step_callback,
-                    FinalAnswerStep: step_callback,
-                },
-                stream_outputs=config.stream_model_output,
-                verbosity_level=LogLevel.INFO,
-            )
+            if self._agent_factory is not None:
+                agent = self._create_agent_from_factory(model=model, config=config)
+            else:
+                tools = self._create_tools_from_factory()
+                agent = CodeAgent(
+                    tools=tools,
+                    model=model,
+                    additional_authorized_imports=config.additional_imports,
+                    planning_interval=config.planning_interval,
+                    step_callbacks={
+                        ActionStep: step_callback,
+                        PlanningStep: step_callback,
+                        FinalAnswerStep: step_callback,
+                    },
+                    stream_outputs=config.stream_model_output,
+                    verbosity_level=LogLevel.INFO,
+                )
+
+            self._validate_agent(agent)
 
             for event in agent.run(prompt, stream=True, reset=False, max_steps=config.max_steps):
                 self._raise_if_cancelled(session_id, run_id)
@@ -140,6 +165,90 @@ class AgentRunner:
     def _raise_if_cancelled(self, session_id: str, run_id: str) -> None:
         if self.store.is_cancel_requested(session_id, run_id):
             raise RunCancelled()
+
+    def _load_factory(self, factory_path: str, option_name: str) -> Any:
+        if ":" not in factory_path:
+            raise FactoryLoadError(f"{option_name} must use module:function format.")
+
+        module_name, function_name = [part.strip() for part in factory_path.split(":", 1)]
+        if not module_name or not function_name:
+            raise FactoryLoadError(f"{option_name} must use module:function format.")
+
+        cwd = str(Path.cwd())
+        if cwd not in sys.path:
+            sys.path.insert(0, cwd)
+
+        try:
+            module = importlib.import_module(module_name)
+        except Exception as exc:
+            raise FactoryLoadError(f"{option_name} could not import module '{module_name}': {exc}") from exc
+
+        try:
+            factory = getattr(module, function_name)
+        except AttributeError as exc:
+            raise FactoryLoadError(f"{option_name} module '{module_name}' has no callable '{function_name}'.") from exc
+
+        if not callable(factory):
+            raise FactoryLoadError(f"{option_name} target '{factory_path}' is not callable.")
+        return factory
+
+    def _create_agent_from_factory(self, *, model: Any, config: AgentRunConfig) -> Any:
+        try:
+            return self._call_agent_factory(self._agent_factory, model=model, config=config)
+        except FactoryLoadError:
+            raise
+        except Exception as exc:
+            raise FactoryLoadError(f"--agent-factory '{self.agent_factory_path}' failed: {exc}") from exc
+
+    def _call_agent_factory(self, factory: Any, *, model: Any, config: AgentRunConfig) -> Any:
+        try:
+            signature = inspect.signature(factory)
+        except (TypeError, ValueError):
+            return factory(model, config)
+
+        parameters = signature.parameters
+        if any(parameter.kind == inspect.Parameter.VAR_POSITIONAL for parameter in parameters.values()):
+            return factory(model, config)
+
+        keyword_args: dict[str, Any] = {}
+        if "model" in parameters:
+            keyword_args["model"] = model
+        if "config" in parameters:
+            keyword_args["config"] = config
+        elif "run_config" in parameters:
+            keyword_args["run_config"] = config
+        if keyword_args and all(
+            parameter.kind in {inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD}
+            for name, parameter in parameters.items()
+            if name in keyword_args
+        ):
+            return factory(**keyword_args)
+
+        positional_parameters = [
+            parameter
+            for parameter in parameters.values()
+            if parameter.kind in {inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD}
+        ]
+        if len(positional_parameters) >= 2:
+            return factory(model, config)
+        if len(positional_parameters) == 1:
+            return factory(model)
+        return factory()
+
+    def _create_tools_from_factory(self) -> list[Any]:
+        if self._tools_factory is None:
+            return []
+        try:
+            tools = self._tools_factory()
+        except Exception as exc:
+            raise FactoryLoadError(f"--tools-factory '{self.tools_factory_path}' failed: {exc}") from exc
+        if not isinstance(tools, list):
+            raise FactoryLoadError(f"--tools-factory '{self.tools_factory_path}' must return a list of tools.")
+        return tools
+
+    def _validate_agent(self, agent: Any) -> None:
+        if not callable(getattr(agent, "run", None)):
+            raise FactoryLoadError("--agent-factory must return a smolagents agent with a callable run method.")
 
     def _build_step_callback(
         self,
