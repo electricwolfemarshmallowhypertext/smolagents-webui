@@ -1,4 +1,10 @@
-# Manual Theme Verification Checklist
+﻿# Manual Theme Verification Checklist
+
+Version: `v0.1.0`
+
+Last verified: `2026-06-07`
+
+Screenshots are receipts for this version and must be refreshed when UI behavior or visual output changes.
 
 Use this checklist to produce missing UI screenshot receipts:
 
@@ -40,3 +46,4 @@ Use this checklist to produce missing UI screenshot receipts:
 - Allowed values only: `dark`, `light`, `modern-tech`
 - Invalid stored value fallback: `dark`
 - Switching themes is instant and does not reload the page
+

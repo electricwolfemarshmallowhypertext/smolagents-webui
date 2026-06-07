@@ -13,6 +13,7 @@ From this repository:
 ```bash
 git clone https://github.com/electricwolfemarshmallowhypertext/smolagents-webui.git
 cd smolagents-webui
+pip install -r constraints-dev.txt
 pip install -e .
 ```
 

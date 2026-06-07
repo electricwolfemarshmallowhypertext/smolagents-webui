@@ -1,13 +1,17 @@
 from pathlib import Path
 import json
 import sys
+import threading
 import uuid
 
 SRC_ROOT = Path(__file__).resolve().parents[2] / "src"
-if str(SRC_ROOT) not in sys.path:
-    sys.path.insert(0, str(SRC_ROOT))
+if str(SRC_ROOT) in sys.path:
+    sys.path.remove(str(SRC_ROOT))
+sys.path.insert(0, str(SRC_ROOT))
 
-from smolagents_webui.store import SessionStore
+import pytest
+
+from smolagents_webui.store import AlreadyRunningError, SessionStore
 
 
 def make_store_without_disk_writes() -> SessionStore:
@@ -61,6 +65,8 @@ def test_store_ignores_corrupt_persistence_file():
     finally:
         if file_path.exists():
             file_path.unlink()
+        for backup_path in file_path.parent.glob(f"{file_path.stem}.corrupt.*{file_path.suffix}"):
+            backup_path.unlink()
 
 
 def test_store_caps_event_history_per_session():
@@ -215,3 +221,92 @@ def test_store_redacts_secret_values_loaded_from_existing_persistence():
         store.close()
         if file_path.exists():
             file_path.unlink()
+
+
+def test_try_start_run_is_atomic_for_concurrent_attempts():
+    store = make_store_without_disk_writes()
+    session_id = store.create_session("Atomic Test")["id"]
+    successes: list[str] = []
+    conflicts = 0
+    barrier = threading.Barrier(2)
+    lock = threading.Lock()
+
+    def attempt_start() -> None:
+        nonlocal conflicts
+        barrier.wait()
+        try:
+            run_id = store.try_start_run(session_id, "hello", {"provider": "openai"})
+        except AlreadyRunningError:
+            with lock:
+                conflicts += 1
+        else:
+            with lock:
+                successes.append(run_id)
+
+    threads = [threading.Thread(target=attempt_start), threading.Thread(target=attempt_start)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert len(successes) == 1
+    assert conflicts == 1
+    session = store.get_session(session_id)
+    assert session["is_running"] is True
+    assert session["active_run_id"] == successes[0]
+
+
+def test_corrupt_persistence_file_is_backed_up_and_warns():
+    file_path = Path.cwd() / f"sessions-corrupt-{uuid.uuid4().hex}.json"
+    file_path.write_text("{this-is-not-json", encoding="utf-8")
+    try:
+        store = SessionStore(file_path)
+
+        assert store.list_sessions() == []
+        assert store.storage_warning == "Session history was corrupt and was backed up."
+        backups = list(file_path.parent.glob(f"{file_path.stem}.corrupt.*{file_path.suffix}"))
+        assert len(backups) == 1
+        assert backups[0].read_text(encoding="utf-8") == "{this-is-not-json"
+        assert file_path.exists() is False
+    finally:
+        if file_path.exists():
+            file_path.unlink()
+        for backup_path in file_path.parent.glob(f"{file_path.stem}.corrupt.*{file_path.suffix}"):
+            backup_path.unlink()
+
+
+def test_store_caps_sessions_and_preserves_running_session():
+    store = make_store_without_disk_writes()
+    store._max_sessions = 200
+    running_session_id = store.create_session("Running")["id"]
+    store.try_start_run(running_session_id, "keep running", {})
+
+    newest_session_id = None
+    for index in range(205):
+        newest_session_id = store.create_session(f"Session {index}")["id"]
+
+    sessions = store.list_sessions()
+    session_ids = {session["id"] for session in sessions}
+    assert len(sessions) == 200
+    assert running_session_id in session_ids
+    assert newest_session_id in session_ids
+
+
+def test_delete_and_clear_sessions_skip_running_sessions():
+    store = make_store_without_disk_writes()
+    running_session_id = store.create_session("Running")["id"]
+    idle_session_id = store.create_session("Idle")["id"]
+    store.try_start_run(running_session_id, "keep running", {})
+
+    with pytest.raises(AlreadyRunningError):
+        store.delete_session(running_session_id)
+    store.delete_session(idle_session_id)
+    assert idle_session_id not in {session["id"] for session in store.list_sessions()}
+
+    removable_session_id = store.create_session("Removable")["id"]
+    deleted_count = store.clear_sessions()
+    session_ids = {session["id"] for session in store.list_sessions()}
+    assert deleted_count == 1
+    assert running_session_id in session_ids
+    assert removable_session_id not in session_ids
+

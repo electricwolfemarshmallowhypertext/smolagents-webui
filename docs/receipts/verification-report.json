@@ -1,4 +1,4 @@
-{
+﻿{
   "all_passed": true,
   "results": [
     {
@@ -41,7 +41,7 @@
       "step": 7,
       "name": "Streaming cards render",
       "ok": true,
-      "detail": "stream_event_badges=['action'], sample_titles=['Prompt', 'Action Step', 'Run Failed']"
+      "detail": "stream_event_badges=['action'], card_titles=['Prompt', 'Action Step', 'Run Status']"
     },
     {
       "step": 8,
@@ -53,7 +53,7 @@
       "step": 9,
       "name": "Load older events appears and works",
       "ok": true,
-      "detail": "button_visible=True, cards_before=7, cards_after=9, seed_selected=True, seed_session_id=ddcab6973750475cafdf49d5d68a792f"
+      "detail": "button_visible=True, cards_before=7, cards_after=9, reference_selected=True, reference_session_id=ddcab6973750475cafdf49d5d68a792f"
     },
     {
       "step": 10,

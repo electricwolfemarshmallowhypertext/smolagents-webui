@@ -122,7 +122,7 @@ body {
 
 body {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   height: 100dvh;
   max-height: 100dvh;
   min-height: 0;
@@ -261,6 +261,13 @@ code,
   color: var(--cyan);
 }
 
+.warning-banner {
+  border-bottom: 1px solid var(--pink);
+  padding: var(--space-8) var(--panel-padding);
+  color: var(--pink);
+  background: var(--surface-alt);
+}
+
 .app-shell {
   height: 100%;
   max-height: 100%;
@@ -292,6 +299,11 @@ code,
   gap: var(--space-8);
   border-bottom: 1px solid var(--border);
   padding: var(--space-8) var(--panel-padding);
+}
+
+.panel-actions {
+  display: flex;
+  gap: var(--space-8);
 }
 
 .left-panel {
@@ -683,6 +695,14 @@ button:disabled {
   justify-self: end;
   border-color: var(--cyan);
   color: var(--cyan);
+}
+
+#cancel-run-btn {
+  grid-row: 2;
+  justify-self: end;
+  margin-right: calc(var(--space-48) * 3 + var(--space-16));
+  border-color: var(--pink);
+  color: var(--pink);
 }
 
 #run-btn:hover,

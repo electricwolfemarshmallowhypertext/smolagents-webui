@@ -12,6 +12,10 @@ if TYPE_CHECKING:
     from smolagents import CodeAgent
 
 
+class RunCancelled(Exception):
+    """Internal signal for cooperative run cancellation."""
+
+
 class AgentRunner:
     """Run smolagents tasks in background threads and publish UI events."""
 
@@ -20,15 +24,12 @@ class AgentRunner:
         self.model_factory = model_factory or ModelFactory()
 
     def start_run(self, session_id: str, prompt: str, config: AgentRunConfig) -> None:
-        session = self.store.get_session(session_id)
-        if session["is_running"]:
-            raise RuntimeError("A run is already active for this session.")
-
-        self.store.mark_run_started(session_id, prompt)
+        run_id = self.store.try_start_run(session_id, prompt, to_json_compatible(config))
         self.store.append_event(
             session_id,
             "run_started",
             {
+                "run_id": run_id,
                 "prompt": prompt,
                 "config": to_json_compatible(config),
             },
@@ -36,12 +37,12 @@ class AgentRunner:
 
         worker = threading.Thread(
             target=self._run_worker,
-            kwargs={"session_id": session_id, "prompt": prompt, "config": config},
+            kwargs={"session_id": session_id, "prompt": prompt, "config": config, "run_id": run_id},
             daemon=True,
         )
         worker.start()
 
-    def _run_worker(self, session_id: str, prompt: str, config: AgentRunConfig) -> None:
+    def _run_worker(self, session_id: str, prompt: str, config: AgentRunConfig, run_id: str) -> None:
         final_answer: Any = None
         try:
             from smolagents import CodeAgent
@@ -53,11 +54,13 @@ class AgentRunner:
 
             step_callback = self._build_step_callback(
                 session_id=session_id,
+                run_id=run_id,
                 action_step_type=ActionStep,
                 planning_step_type=PlanningStep,
                 final_answer_step_type=FinalAnswerStep,
             )
 
+            self._raise_if_cancelled(session_id, run_id)
             model = self.model_factory.create(config)
             agent = CodeAgent(
                 tools=[],
@@ -74,6 +77,7 @@ class AgentRunner:
             )
 
             for event in agent.run(prompt, stream=True, reset=False, max_steps=config.max_steps):
+                self._raise_if_cancelled(session_id, run_id)
                 if isinstance(event, ChatMessageStreamDelta):
                     if event.content:
                         self.store.append_event(
@@ -104,31 +108,49 @@ class AgentRunner:
                             "output": self._preview(event.output),
                             "is_final_answer": event.is_final_answer,
                         },
-                    )
+                        )
                 elif isinstance(event, FinalAnswerStep):
                     final_answer = event.output
+                self._raise_if_cancelled(session_id, run_id)
 
             self.store.append_event(
                 session_id,
                 "run_completed",
                 {
+                    "run_id": run_id,
                     "final_answer": to_json_compatible(final_answer),
+                },
+            )
+            self.store.mark_run_finished(session_id)
+        except RunCancelled:
+            self.store.append_event(
+                session_id,
+                "run_cancelled",
+                {
+                    "run_id": run_id,
+                    "message": "Run cancelled by user.",
                 },
             )
             self.store.mark_run_finished(session_id)
         except Exception as exc:
             error_message = f"{type(exc).__name__}: {exc}"
-            self.store.append_event(session_id, "run_failed", {"error": error_message})
+            self.store.append_event(session_id, "run_failed", {"run_id": run_id, "error": error_message})
             self.store.mark_run_finished(session_id, error=error_message)
+
+    def _raise_if_cancelled(self, session_id: str, run_id: str) -> None:
+        if self.store.is_cancel_requested(session_id, run_id):
+            raise RunCancelled()
 
     def _build_step_callback(
         self,
         session_id: str,
+        run_id: str,
         action_step_type: type,
         planning_step_type: type,
         final_answer_step_type: type,
     ):
         def _callback(step: Any, agent: CodeAgent) -> None:
+            self._raise_if_cancelled(session_id, run_id)
             state_snapshot = to_json_compatible(getattr(agent, "state", {}))
             if isinstance(state_snapshot, dict):
                 self.store.update_agent_state(session_id, state_snapshot)
@@ -146,6 +168,7 @@ class AgentRunner:
                         "state": state_snapshot,
                     },
                 )
+            self._raise_if_cancelled(session_id, run_id)
 
         return _callback
 

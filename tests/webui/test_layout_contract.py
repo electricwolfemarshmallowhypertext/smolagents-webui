@@ -1,4 +1,4 @@
-from pathlib import Path
+﻿from pathlib import Path
 
 
 PROJECT_ROOT = Path.cwd()
@@ -13,7 +13,7 @@ def test_viewport_layout_is_contained():
     assert "height: 100dvh;" in styles
     assert "max-height: 100dvh;" in styles
     assert "overflow: hidden;" in styles
-    assert "grid-template-rows: auto auto minmax(0, 1fr);" in styles
+    assert "grid-template-rows: auto auto auto minmax(0, 1fr);" in styles
     assert ".app-shell {" in styles
     assert "height: 100%;" in styles
     assert "max-height: 100%;" in styles
@@ -62,3 +62,13 @@ def test_workspace_failures_render_visible_states():
 
     assert "Workspace unavailable" in source
     assert "Recent files unavailable" in source
+
+
+def test_history_controls_are_wired():
+    source = APP_JS.read_text(encoding="utf-8")
+
+    assert "cancelRun" in source
+    assert "deleteCurrentSession" in source
+    assert "clearSessions" in source
+    assert "renderStorageWarning" in source
+

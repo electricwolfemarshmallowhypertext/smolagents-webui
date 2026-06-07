@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r constraints-dev.txt
+          python -m pip install -e .
+
+      - name: Frontend syntax
+        run: node --check src/smolagents_webui/static/app.js
+
+      - name: Backend compile
+        run: python -m py_compile src/smolagents_webui/server.py src/smolagents_webui/runner.py src/smolagents_webui/model_factory.py src/smolagents_webui/store.py src/smolagents_webui/workspace.py src/smolagents_webui/serialization.py
+
+      - name: Tests
+        run: python -m pytest tests/webui -q --noconftest -p no:cacheprovider
+
+      - name: Build
+        run: python -m build

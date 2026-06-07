@@ -6,8 +6,9 @@ import uuid
 import pytest
 
 SRC_ROOT = Path(__file__).resolve().parents[2] / "src"
-if str(SRC_ROOT) not in sys.path:
-    sys.path.insert(0, str(SRC_ROOT))
+if str(SRC_ROOT) in sys.path:
+    sys.path.remove(str(SRC_ROOT))
+sys.path.insert(0, str(SRC_ROOT))
 
 from smolagents_webui.workspace import WorkspaceBrowser
 
@@ -89,3 +90,4 @@ def test_workspace_tree_handles_unreadable_directories(monkeypatch):
     finally:
         if workspace_root.exists():
             shutil.rmtree(workspace_root)
+

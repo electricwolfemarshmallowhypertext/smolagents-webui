@@ -2,8 +2,9 @@ import sys
 from pathlib import Path
 
 SRC_ROOT = Path(__file__).resolve().parents[2] / "src"
-if str(SRC_ROOT) not in sys.path:
-    sys.path.insert(0, str(SRC_ROOT))
+if str(SRC_ROOT) in sys.path:
+    sys.path.remove(str(SRC_ROOT))
+sys.path.insert(0, str(SRC_ROOT))
 
 import smolagents_webui.model_factory as model_factory_module
 from smolagents_webui.config import AgentRunConfig
@@ -100,3 +101,4 @@ def test_model_factory_routes_ollama_to_openai_compat(monkeypatch):
     assert captured["model_id"] == "llama3.1"
     assert captured["api_base"] == "http://localhost:11434/v1"
     assert captured["api_key"] == "ollama"
+

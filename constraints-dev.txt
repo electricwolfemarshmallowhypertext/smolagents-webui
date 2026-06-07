@@ -1,0 +1,3 @@
+build
+pytest
+setuptools>=68,<77

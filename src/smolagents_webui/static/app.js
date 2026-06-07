@@ -34,6 +34,7 @@ const state = {
   sessionsRefreshTimer: null,
   lastSessionsLoadMs: 0,
   runLocked: false,
+  currentRunId: null,
   streamCardBody: null,
   renderedEventSeqs: new Set(),
 };
@@ -43,6 +44,9 @@ const elements = {
   themeSelect: document.getElementById("theme-select"),
   mobileTabs: Array.from(document.querySelectorAll(".mobile-tab")),
   newSessionButton: document.getElementById("new-session-btn"),
+  clearSessionsButton: document.getElementById("clear-sessions-btn"),
+  deleteSessionButton: document.getElementById("delete-session-btn"),
+  storageWarning: document.getElementById("storage-warning"),
   sessionList: document.getElementById("session-list"),
   sessionTitle: document.getElementById("session-title"),
   livePill: document.getElementById("live-pill"),
@@ -50,6 +54,7 @@ const elements = {
   chatCardTemplate: document.getElementById("chat-card-template"),
   runForm: document.getElementById("run-form"),
   runButton: document.getElementById("run-btn"),
+  cancelRunButton: document.getElementById("cancel-run-btn"),
   promptInput: document.getElementById("prompt-input"),
   providerSelect: document.getElementById("provider-select"),
   modelIdInput: document.getElementById("model-id-input"),
@@ -135,6 +140,7 @@ function humanizeEventType(eventType) {
     planning_step: "plan",
     final_answer_step: "final-step",
     run_completed: "completed",
+    run_cancelled: "cancelled",
     run_failed: "failed",
   };
   return labels[eventType] || "event";
@@ -144,7 +150,7 @@ function eventStatus(eventType, payload = {}) {
   if (eventType === "run_failed" || payload.error) {
     return "error";
   }
-  if (eventType === "run_completed" || eventType === "final_answer_step" || payload.is_final_answer) {
+  if (eventType === "run_completed" || eventType === "run_cancelled" || eventType === "final_answer_step" || payload.is_final_answer) {
     return "complete";
   }
   if (eventType === "run_started" || eventType === "assistant_delta" || eventType === "tool_call" || eventType === "action_step") {
@@ -192,6 +198,32 @@ async function apiPost(path, body) {
   return payload;
 }
 
+async function apiDelete(path) {
+  const response = await fetch(`${API_ROOT}${path}`, {
+    method: "DELETE",
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(payload.error || `DELETE ${path} failed with ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+  return payload;
+}
+
+function renderStorageWarning(message) {
+  if (!elements.storageWarning) {
+    return;
+  }
+  if (!message) {
+    elements.storageWarning.hidden = true;
+    elements.storageWarning.textContent = "";
+    return;
+  }
+  elements.storageWarning.hidden = false;
+  elements.storageWarning.textContent = message;
+}
+
 function setLivePill(status) {
   const pill = elements.livePill;
   if (!pill) {
@@ -206,6 +238,13 @@ function setRunLock(locked) {
   if (elements.runButton) {
     elements.runButton.disabled = state.runLocked || !state.activeSessionId;
     elements.runButton.textContent = state.runLocked ? "Running..." : "Run Agent";
+  }
+  if (elements.cancelRunButton) {
+    elements.cancelRunButton.hidden = !state.runLocked;
+    elements.cancelRunButton.disabled = !state.runLocked || !state.currentRunId;
+  }
+  if (elements.deleteSessionButton) {
+    elements.deleteSessionButton.disabled = !state.activeSessionId || state.runLocked;
   }
 }
 
@@ -600,6 +639,7 @@ async function loadSessions(force = false) {
 
     if (!state.activeSessionId && state.sessions.length === 0) {
       state.activeSession = null;
+      state.currentRunId = null;
       state.hasOlderEvents = false;
       state.oldestEventSeq = null;
       setSessionTitle("No run selected");
@@ -619,6 +659,7 @@ async function loadSessions(force = false) {
       if (!activeSummary && state.sessions.length === 0) {
         state.activeSessionId = null;
         state.activeSession = null;
+        state.currentRunId = null;
         setSessionTitle("No run selected");
         renderNoRunSelected();
         renderAgentState({});
@@ -627,6 +668,7 @@ async function loadSessions(force = false) {
         return;
       }
       if (activeSummary && !state.runLocked) {
+        state.currentRunId = activeSummary.active_run_id || null;
         setRunLock(Boolean(activeSummary.is_running));
       }
     }
@@ -656,6 +698,7 @@ function extractSeq(event) {
 
 function renderRunStarted(event, mode) {
   const payload = event.payload || {};
+  state.currentRunId = payload.run_id || state.currentRunId;
   const { root, bodyNode } = buildCard({
     title: "Prompt",
     classes: ["user"],
@@ -759,6 +802,23 @@ function renderRunCompleted(event, mode) {
   }
 
   setRunLock(false);
+  state.currentRunId = null;
+  setLivePill("idle");
+}
+
+function renderRunCancelled(event, mode) {
+  if (state.streamCardBody && state.streamCardBody.parentElement) {
+    state.streamCardBody.parentElement.classList.remove("stream");
+  }
+  state.streamCardBody = null;
+
+  const payload = event.payload || {};
+  const { root, bodyNode } = buildCard({ title: "Run Cancelled", classes: ["system"], event, status: "complete" });
+  appendTextSection(bodyNode, "message", payload.message || "Run cancelled.", "", { collapseLong: false });
+  insertCard(root, mode);
+
+  setRunLock(false);
+  state.currentRunId = null;
   setLivePill("idle");
 }
 
@@ -774,6 +834,7 @@ function renderRunFailed(event, mode) {
   insertCard(root, mode);
 
   setRunLock(false);
+  state.currentRunId = null;
   setLivePill("idle");
 }
 
@@ -814,6 +875,9 @@ function renderEvent(event, mode = "append") {
     case "run_completed":
       renderRunCompleted(event, mode);
       break;
+    case "run_cancelled":
+      renderRunCancelled(event, mode);
+      break;
     case "run_failed":
       renderRunFailed(event, mode);
       break;
@@ -827,7 +891,7 @@ function renderEvent(event, mode = "append") {
     state.lastEventSeq = Math.max(state.lastEventSeq, seq);
   }
 
-  if (event.type === "run_started" || event.type === "run_completed" || event.type === "run_failed") {
+  if (event.type === "run_started" || event.type === "run_completed" || event.type === "run_cancelled" || event.type === "run_failed") {
     scheduleLoadSessions();
   }
 }
@@ -1015,6 +1079,7 @@ async function selectSession(sessionId) {
   try {
     const session = await loadSession(sessionId);
     state.activeSession = session;
+    state.currentRunId = session.active_run_id || null;
     setSessionTitle(session.title || "Untitled Session");
     setRunLock(Boolean(session.is_running));
     setLivePill(session.is_running ? "running" : "idle");
@@ -1044,6 +1109,7 @@ async function selectSession(sessionId) {
   } catch (error) {
     console.error(error);
     setSessionTitle("Failed to load session");
+    state.currentRunId = null;
     setRunLock(false);
     setLivePill("idle");
   }
@@ -1134,6 +1200,30 @@ async function submitRun(event) {
   }
 }
 
+async function cancelRun() {
+  if (!state.currentRunId || !state.runLocked) {
+    return;
+  }
+  if (elements.cancelRunButton) {
+    elements.cancelRunButton.disabled = true;
+    elements.cancelRunButton.textContent = "Cancelling...";
+  }
+  setLivePill("cancelling");
+  try {
+    await apiPost(`/api/runs/${state.currentRunId}/cancel`, {});
+    scheduleLoadSessions();
+  } catch (error) {
+    console.error(error);
+    if (elements.cancelRunButton) {
+      elements.cancelRunButton.disabled = false;
+    }
+  } finally {
+    if (elements.cancelRunButton) {
+      elements.cancelRunButton.textContent = "Cancel";
+    }
+  }
+}
+
 async function createSession() {
   try {
     const payload = await apiPost("/api/sessions", {});
@@ -1141,6 +1231,41 @@ async function createSession() {
     if (payload.session && payload.session.id) {
       await selectSession(payload.session.id);
     }
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+async function deleteCurrentSession() {
+  if (!state.activeSessionId || state.runLocked) {
+    return;
+  }
+  if (!window.confirm("Delete this session history?")) {
+    return;
+  }
+  try {
+    await apiDelete(`/api/sessions/${state.activeSessionId}`);
+    closeEventStream();
+    state.activeSessionId = null;
+    state.activeSession = null;
+    state.currentRunId = null;
+    await loadSessions(true);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+async function clearSessions() {
+  if (!window.confirm("Clear local session history?")) {
+    return;
+  }
+  try {
+    await apiPost("/api/sessions/clear", {});
+    closeEventStream();
+    state.activeSessionId = null;
+    state.activeSession = null;
+    state.currentRunId = null;
+    await loadSessions(true);
   } catch (error) {
     console.error(error);
   }
@@ -1181,9 +1306,27 @@ function bindEvents() {
     });
   }
 
+  if (elements.clearSessionsButton) {
+    elements.clearSessionsButton.addEventListener("click", () => {
+      void clearSessions();
+    });
+  }
+
+  if (elements.deleteSessionButton) {
+    elements.deleteSessionButton.addEventListener("click", () => {
+      void deleteCurrentSession();
+    });
+  }
+
   if (elements.runForm) {
     elements.runForm.addEventListener("submit", (event) => {
       void submitRun(event);
+    });
+  }
+
+  if (elements.cancelRunButton) {
+    elements.cancelRunButton.addEventListener("click", () => {
+      void cancelRun();
     });
   }
 
@@ -1214,6 +1357,12 @@ async function bootstrap() {
   setMobilePanel(elements.body.dataset.mobilePanel || "run");
   bindEvents();
   ensureHistoryControls();
+  try {
+    const health = await apiGet("/api/health");
+    renderStorageWarning(health.storage_warning || "");
+  } catch (error) {
+    console.error(error);
+  }
 
   await loadSessions(true);
   await loadWorkspaceTree();

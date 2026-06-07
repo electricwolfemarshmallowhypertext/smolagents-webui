@@ -1,4 +1,4 @@
-import re
+﻿import re
 from pathlib import Path
 
 
@@ -72,3 +72,4 @@ def test_code_elements_use_code_font_variable():
     assert "code," in styles
     assert ".output-block," in styles
     assert "font-family: var(--font-code);" in styles
+

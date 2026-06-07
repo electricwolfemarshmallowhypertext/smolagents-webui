@@ -3,6 +3,7 @@ from __future__ import annotations
 import errno
 import json
 import os
+import shutil
 import tempfile
 import time
 import uuid
@@ -32,6 +33,8 @@ class SessionRecord:
     agent_state: dict[str, Any] = field(default_factory=dict)
     last_error: str | None = None
     last_prompt: str | None = None
+    active_run_id: str | None = None
+    cancel_requested: bool = False
 
     def as_summary(self) -> dict[str, Any]:
         return {
@@ -44,7 +47,13 @@ class SessionRecord:
             "last_error": self.last_error,
             "last_prompt": self.last_prompt,
             "event_count": len(self.events),
+            "active_run_id": self.active_run_id,
+            "cancel_requested": self.cancel_requested,
         }
+
+
+class AlreadyRunningError(RuntimeError):
+    """Raised when a session already has an active run."""
 
 
 class SessionStore:
@@ -54,6 +63,7 @@ class SessionStore:
         self,
         file_path: Path,
         max_events_per_session: int = 2000,
+        max_sessions: int = 200,
         persist_debounce_seconds: float = 0.75,
     ):
         self._file_path = file_path
@@ -61,9 +71,11 @@ class SessionStore:
         self._events_available = Condition(self._lock)
         self._sessions: dict[str, SessionRecord] = {}
         self._max_events_per_session = max(200, max_events_per_session)
+        self._max_sessions = max(1, max_sessions)
         self._persist_debounce_seconds = max(0.0, persist_debounce_seconds)
         self._persist_timer: Timer | None = None
         self._persist_dirty = False
+        self.storage_warning: str | None = None
         self._load()
 
     def _load(self) -> None:
@@ -71,8 +83,12 @@ class SessionStore:
             return
         try:
             raw = json.loads(self._file_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            # Ignore corrupt persistence files and start with a clean in-memory store.
+        except json.JSONDecodeError:
+            self._backup_corrupt_file()
+            self.storage_warning = "Session history was corrupt and was backed up."
+            return
+        except OSError:
+            self.storage_warning = "Session history could not be read."
             return
 
         sessions_payload = raw.get("sessions", {})
@@ -92,6 +108,8 @@ class SessionStore:
                     agent_state=redact_secrets(dict(payload.get("agent_state", {}))),
                     last_error=payload.get("last_error"),
                     last_prompt=payload.get("last_prompt"),
+                    active_run_id=payload.get("active_run_id"),
+                    cancel_requested=bool(payload.get("cancel_requested", False)),
                 )
             except (TypeError, ValueError, AttributeError):
                 continue
@@ -102,6 +120,18 @@ class SessionStore:
             payload_next_seq = int(payload.get("next_seq", last_seq + 1))
             record.next_seq = max(payload_next_seq, last_seq + 1)
             self._sessions[session_id] = record
+        self._enforce_max_sessions_locked()
+
+    def _backup_corrupt_file(self) -> None:
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+        backup_path = self._file_path.with_name(f"{self._file_path.stem}.corrupt.{timestamp}{self._file_path.suffix}")
+        try:
+            self._file_path.replace(backup_path)
+        except OSError:
+            try:
+                shutil.copy2(self._file_path, backup_path)
+            except OSError:
+                return
 
     def _is_transient_replace_error(self, exc: OSError) -> bool:
         if isinstance(exc, PermissionError):
@@ -126,6 +156,8 @@ class SessionStore:
                     "agent_state": redact_secrets(record.agent_state),
                     "last_error": record.last_error,
                     "last_prompt": record.last_prompt,
+                    "active_run_id": record.active_run_id,
+                    "cancel_requested": record.cancel_requested,
                 }
                 for session_id, record in self._sessions.items()
             }
@@ -195,6 +227,14 @@ class SessionStore:
             raise KeyError(f"Unknown session: {session_id}")
         return self._sessions[session_id]
 
+    def _enforce_max_sessions_locked(self) -> None:
+        while len(self._sessions) > self._max_sessions:
+            removable = [record for record in self._sessions.values() if not record.is_running]
+            if not removable:
+                return
+            oldest = min(removable, key=lambda record: record.updated_at)
+            del self._sessions[oldest.session_id]
+
     def create_session(self, title: str | None = None) -> dict[str, Any]:
         with self._lock:
             now = utc_now_iso()
@@ -207,6 +247,7 @@ class SessionStore:
                 updated_at=now,
             )
             self._sessions[session_id] = record
+            self._enforce_max_sessions_locked()
             self._schedule_persist_locked()
             return record.as_summary()
 
@@ -301,11 +342,46 @@ class SessionStore:
             self._events_available.notify_all()
             return event
 
+    def try_start_run(self, session_id: str, prompt: str, run_config: dict[str, Any]) -> str:
+        with self._events_available:
+            record = self._get_session_locked(session_id)
+            if record.is_running:
+                raise AlreadyRunningError("A run is already active for this session.")
+            run_id = uuid.uuid4().hex
+            record.run_count += 1
+            record.is_running = True
+            record.active_run_id = run_id
+            record.cancel_requested = False
+            record.last_error = None
+            record.last_prompt = prompt
+            record.updated_at = utc_now_iso()
+            self._schedule_persist_locked()
+            self._events_available.notify_all()
+            return run_id
+
+    def request_run_cancel(self, run_id: str) -> str:
+        with self._events_available:
+            for record in self._sessions.values():
+                if record.active_run_id == run_id and record.is_running:
+                    record.cancel_requested = True
+                    record.updated_at = utc_now_iso()
+                    self._schedule_persist_locked()
+                    self._events_available.notify_all()
+                    return record.session_id
+            raise KeyError(f"Unknown active run: {run_id}")
+
+    def is_cancel_requested(self, session_id: str, run_id: str) -> bool:
+        with self._lock:
+            record = self._get_session_locked(session_id)
+            return record.active_run_id == run_id and record.cancel_requested
+
     def mark_run_started(self, session_id: str, prompt: str) -> None:
         with self._events_available:
             record = self._get_session_locked(session_id)
             record.run_count += 1
             record.is_running = True
+            record.active_run_id = uuid.uuid4().hex
+            record.cancel_requested = False
             record.last_error = None
             record.last_prompt = prompt
             record.updated_at = utc_now_iso()
@@ -316,10 +392,32 @@ class SessionStore:
         with self._events_available:
             record = self._get_session_locked(session_id)
             record.is_running = False
+            record.active_run_id = None
+            record.cancel_requested = False
             record.last_error = error
             record.updated_at = utc_now_iso()
             self._schedule_persist_locked()
             self._events_available.notify_all()
+
+    def delete_session(self, session_id: str) -> None:
+        with self._events_available:
+            record = self._get_session_locked(session_id)
+            if record.is_running:
+                raise AlreadyRunningError("Cannot delete a session while a run is active.")
+            del self._sessions[session_id]
+            self._schedule_persist_locked()
+            self._events_available.notify_all()
+
+    def clear_sessions(self) -> int:
+        with self._events_available:
+            removable_ids = [
+                session_id for session_id, record in self._sessions.items() if not record.is_running
+            ]
+            for session_id in removable_ids:
+                del self._sessions[session_id]
+            self._schedule_persist_locked()
+            self._events_available.notify_all()
+            return len(removable_ids)
 
     def update_agent_state(self, session_id: str, state: dict[str, Any]) -> None:
         with self._events_available:

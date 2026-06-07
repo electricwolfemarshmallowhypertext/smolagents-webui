@@ -41,11 +41,16 @@
       <button id="mobile-tab-workspace" class="mobile-tab" type="button" data-target="workspace">Workspace</button>
     </nav>
 
+    <div id="storage-warning" class="warning-banner" hidden></div>
+
     <div class="app-shell">
       <aside class="panel left-panel" data-panel="sessions">
         <div class="panel-header">
           <h1>Session History</h1>
-          <button id="new-session-btn" type="button">New</button>
+          <div class="panel-actions">
+            <button id="clear-sessions-btn" type="button">Clear</button>
+            <button id="new-session-btn" type="button">New</button>
+          </div>
         </div>
         <div id="session-list" class="session-list"></div>
       </aside>
@@ -56,6 +61,7 @@
             <h1>Agent Run Console</h1>
             <p id="session-title" class="muted">No session selected</p>
           </div>
+          <button id="delete-session-btn" type="button" disabled>Delete Session</button>
           <span class="live-pill" id="live-pill">idle</span>
         </header>
 
@@ -117,6 +123,7 @@
           </div>
 
           <button id="run-btn" type="submit">Run Agent</button>
+          <button id="cancel-run-btn" type="button" hidden>Cancel</button>
         </form>
       </main>
 

@@ -15,7 +15,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from smolagents_webui.config import AgentRunConfig
 from smolagents_webui.runner import AgentRunner
-from smolagents_webui.store import SessionStore
+from smolagents_webui.store import AlreadyRunningError, SessionStore
 from smolagents_webui.workspace import WorkspaceBrowser
 
 
@@ -61,7 +61,10 @@ class SmolagentsWebUIHandler(BaseHTTPRequestHandler):
             return
 
         if route == "/api/health":
-            self._send_json(HTTPStatus.OK, {"status": "ok"})
+            payload = {"status": "ok"}
+            if self.app_state.store.storage_warning:
+                payload["storage_warning"] = self.app_state.store.storage_warning
+            self._send_json(HTTPStatus.OK, payload)
             return
 
         if route == "/api/sessions":
@@ -101,14 +104,46 @@ class SmolagentsWebUIHandler(BaseHTTPRequestHandler):
         if payload is None:
             return
 
+        if route == "/api/sessions/clear":
+            deleted_count = self.app_state.store.clear_sessions()
+            self._send_json(HTTPStatus.OK, {"ok": True, "deleted_count": deleted_count})
+            return
+
         if route == "/api/sessions":
             title = payload.get("title")
             session = self.app_state.store.create_session(title=str(title) if title is not None else None)
             self._send_json(HTTPStatus.CREATED, {"session": session})
             return
 
+        if match := re.fullmatch(r"/api/runs/([a-f0-9]+)/cancel", route):
+            self._handle_cancel_run(match.group(1))
+            return
+
         if match := re.fullmatch(r"/api/sessions/([a-f0-9]+)/runs", route):
             self._handle_start_run(match.group(1), payload)
+            return
+
+        self._send_error_json(HTTPStatus.NOT_FOUND, "Route not found.")
+
+    def do_DELETE(self) -> None:
+        parsed = urlsplit(self.path)
+        route = parsed.path
+
+        if route == "/api/sessions":
+            deleted_count = self.app_state.store.clear_sessions()
+            self._send_json(HTTPStatus.OK, {"ok": True, "deleted_count": deleted_count})
+            return
+
+        if match := re.fullmatch(r"/api/sessions/([a-f0-9]+)", route):
+            try:
+                self.app_state.store.delete_session(match.group(1))
+            except KeyError:
+                self._send_error_json(HTTPStatus.NOT_FOUND, "Session not found.")
+                return
+            except AlreadyRunningError as exc:
+                self._send_error_json(HTTPStatus.CONFLICT, str(exc))
+                return
+            self._send_json(HTTPStatus.OK, {"ok": True})
             return
 
         self._send_error_json(HTTPStatus.NOT_FOUND, "Route not found.")
@@ -222,11 +257,19 @@ class SmolagentsWebUIHandler(BaseHTTPRequestHandler):
         except KeyError:
             self._send_error_json(HTTPStatus.NOT_FOUND, "Session not found.")
             return
-        except RuntimeError as exc:
+        except AlreadyRunningError as exc:
             self._send_error_json(HTTPStatus.CONFLICT, str(exc))
             return
 
         self._send_json(HTTPStatus.ACCEPTED, {"ok": True})
+
+    def _handle_cancel_run(self, run_id: str) -> None:
+        try:
+            session_id = self.app_state.store.request_run_cancel(run_id)
+        except KeyError:
+            self._send_error_json(HTTPStatus.NOT_FOUND, "Active run not found.")
+            return
+        self._send_json(HTTPStatus.ACCEPTED, {"ok": True, "session_id": session_id, "run_id": run_id})
 
     def _handle_stream(self, session_id: str, query: str) -> None:
         params = parse_qs(query)
